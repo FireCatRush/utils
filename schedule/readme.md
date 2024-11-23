@@ -230,6 +230,233 @@ window = TimeWindow(
 - `HIGH`: 高优先级
 - `CRITICAL`: 关键优先级
 
+# 调度器运行模式详解
+
+## 运行模式对比
+
+### 前台模式 (FOREGROUND)
+
+前台模式会阻塞当前线程，适合调度器是程序的主要或唯一功能的场景。
+
+```python
+from schedule import Scheduler, SchedulerMode
+
+# 创建前台模式调度器
+scheduler = Scheduler(mode=SchedulerMode.FOREGROUND)
+
+@scheduler.task.periodic(interval=5)
+def my_task():
+    print("Task executing...")
+
+# 这行会阻塞，程序会一直在这里运行，直到被中断
+scheduler.start()
+
+# 下面的代码不会立即执行，要等调度器停止后才会执行
+print("Scheduler stopped")
+```
+
+使用场景：
+1. 简单的定时任务脚本
+```python
+# 比如一个定时备份脚本
+scheduler = Scheduler(mode=SchedulerMode.FOREGROUND)
+
+@scheduler.task.periodic(interval=3600)  # 每小时执行一次
+def backup_data():
+    perform_backup()
+
+scheduler.start()  # 程序会在这里持续运行
+```
+
+2. 独立的任务调度程序
+```python
+scheduler = Scheduler(mode=SchedulerMode.FOREGROUND)
+
+@scheduler.task.periodic(interval=300)
+def task1():
+    print("Task 1")
+
+@scheduler.task.periodic(interval=600)
+def task2():
+    print("Task 2")
+
+try:
+    scheduler.start()  # 程序会在这里等待
+except KeyboardInterrupt:
+    scheduler.stop()
+```
+
+### 后台模式 (BACKGROUND)
+
+后台模式在单独的线程中运行调度器，不会阻塞主程序，适合将调度器作为程序一部分的场景。
+
+```python
+# 创建后台模式调度器
+scheduler = Scheduler(mode=SchedulerMode.BACKGROUND)
+
+@scheduler.task.periodic(interval=5)
+def background_task():
+    print("Background task executing...")
+
+# 这行不会阻塞，调度器在后台运行
+scheduler.start()
+
+# 下面的代码会立即执行
+print("Main program continues...")
+while True:
+    print("Doing other things...")
+    time.sleep(1)
+```
+
+使用场景：
+1. Web服务中的定时任务
+```python
+class WebServer:
+    def __init__(self):
+        self.scheduler = Scheduler(mode=SchedulerMode.BACKGROUND)
+        
+        @self.scheduler.task.periodic(interval=300)
+        def clean_sessions():
+            self.cleanup_expired_sessions()
+    
+    def start(self):
+        # 启动调度器（在后台运行）
+        self.scheduler.start()
+        # 启动Web服务
+        self.run_web_server()  # 不会被调度器阻塞
+```
+
+2. GUI应用中的定时任务
+```python
+class MyGUIApp:
+    def __init__(self):
+        self.scheduler = Scheduler(mode=SchedulerMode.BACKGROUND)
+        
+        @self.scheduler.task.periodic(interval=60)
+        def refresh_data():
+            self.update_display()
+    
+    def run(self):
+        # 启动后台任务
+        self.scheduler.start()
+        # 运行GUI主循环
+        self.mainloop()  # GUI不会被调度器阻塞
+```
+
+## 模式选择建议
+
+### 使用前台模式 (FOREGROUND) 
+when：
+1. 调度器是程序的主要功能
+2. 不需要同时执行其他操作
+3. 希望程序随调度器的停止而结束
+4. 编写简单的定时任务脚本
+
+```python
+# 前台模式示例
+def run_scheduler():
+    scheduler = Scheduler(mode=SchedulerMode.FOREGROUND)
+    
+    @scheduler.task.periodic(interval=60)
+    def main_task():
+        process_data()
+    
+    # 程序会在这里等待，直到调度器停止
+    scheduler.start()
+```
+
+### 使用后台模式 (BACKGROUND) 
+when：
+1. 调度器只是程序的一个组件
+2. 需要同时执行其他操作
+3. 需要在主程序中控制调度器
+4. 实现服务类应用
+
+```python
+# 后台模式示例
+class DataService:
+    def __init__(self):
+        self.scheduler = Scheduler(mode=SchedulerMode.BACKGROUND)
+        
+        @self.scheduler.task.periodic(interval=60)
+        def background_task():
+            self.process_data()
+    
+    def start(self):
+        # 启动后台调度器
+        self.scheduler.start()
+        # 继续执行其他操作
+        self.do_other_things()
+```
+
+## 注意事项
+
+1. **前台模式**:
+   - `start()` 调用会阻塞当前线程
+   - 需要使用 Ctrl+C 或其他方式中断
+   - 适合命令行工具和脚本
+
+2. **后台模式**:
+   - `start()` 调用立即返回
+   - 需要手动管理调度器的生命周期
+   - 记得在程序结束时调用 `stop()`
+
+3. **切换模式**:
+   - 只能在调度器启动前切换模式
+   - 运行过程中不能更改模式
+
+```python
+# 错误示例
+scheduler = Scheduler(mode=SchedulerMode.BACKGROUND)
+scheduler.start()
+scheduler.mode = SchedulerMode.FOREGROUND  # 将抛出异常
+
+# 正确示例
+scheduler = Scheduler(mode=SchedulerMode.BACKGROUND)
+scheduler.mode = SchedulerMode.FOREGROUND  # 在启动前切换模式
+scheduler.start()
+```
+
+## 推荐用法
+
+1. **前台模式 - 简单脚本**:
+```python
+def main():
+    scheduler = Scheduler(mode=SchedulerMode.FOREGROUND)
+    
+    @scheduler.task.periodic(interval=60)
+    def my_task():
+        do_work()
+    
+    try:
+        scheduler.start()
+    except KeyboardInterrupt:
+        scheduler.stop()
+
+if __name__ == '__main__':
+    main()
+```
+
+2. **后台模式 - 服务组件**:
+```python
+class MyService:
+    def __init__(self):
+        self.scheduler = Scheduler(mode=SchedulerMode.BACKGROUND)
+        self._setup_tasks()
+    
+    def _setup_tasks(self):
+        @self.scheduler.task.periodic(interval=300)
+        def maintenance():
+            self._do_maintenance()
+    
+    def start(self):
+        self.scheduler.start()
+        # 继续其他操作...
+    
+    def stop(self):
+        self.scheduler.stop()
+```
+
 ## 最佳实践
 
 1. **选择合适的运行模式**

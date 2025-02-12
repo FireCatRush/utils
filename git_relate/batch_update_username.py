@@ -2,19 +2,27 @@ import os
 import subprocess
 import argparse
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+
+def is_git_repo(path):
+    """检查路径是否为 Git 仓库"""
+    return (path / ".git").is_dir()
 
 def find_git_repos(base_path):
+    """递归查找指定路径下的所有 Git 仓库"""
     git_repos = []
-    for root, dirs, files in os.walk(base_path):
+    for root, dirs, _ in os.walk(base_path):
+        # 快速过滤包含 .git 的目录
         if ".git" in dirs:
-            git_repos.append(root)
-            dirs[:] = []
+            git_repos.append(Path(root))
+            dirs[:] = []  # 停止递归进入子目录
     return git_repos
 
 def get_remote_url(repo_path):
+    """获取 Git 仓库的远程 URL"""
     try:
         result = subprocess.run(
-            ["git", "-C", repo_path, "remote", "get-url", "origin"],
+            ["git", "-C", str(repo_path), "remote", "get-url", "origin"],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True
@@ -28,16 +36,25 @@ def get_remote_url(repo_path):
         return None
 
 def update_remote_url(repo_path, old_url, new_url):
+    """更新 Git 仓库的远程 URL"""
     try:
         subprocess.run(
-            ["git", "-C", repo_path, "remote", "set-url", "origin", new_url],
+            ["git", "-C", str(repo_path), "remote", "set-url", "origin", new_url],
             check=True
         )
         print(f"Updated: {repo_path}\n  Old URL: {old_url}\n  New URL: {new_url}")
     except subprocess.CalledProcessError as e:
         print(f"Failed to update {repo_path}: {e}")
 
+def process_repo(repo_path, old_username, new_username, changes):
+    """处理单个 Git 仓库"""
+    remote_url = get_remote_url(repo_path)
+    if remote_url and old_username in remote_url:
+        new_url = remote_url.replace(old_username, new_username)
+        changes.append((repo_path, remote_url, new_url))
+
 def main():
+    # 解析命令行参数
     parser = argparse.ArgumentParser(
         description="批量修改 Git 仓库的远程 URL",
         epilog="示例: python update_git_urls.py --path /path/to/repositories --old olduser --new newuser"
@@ -59,7 +76,8 @@ def main():
     )
     args = parser.parse_args()
 
-    base_path = Path(args.path).resolve()
+    # 跨平台路径解析
+    base_path = Path(args.path).resolve()  # 自动解析为绝对路径并标准化
     if not base_path.exists():
         print(f"错误：路径 '{args.path}' 不存在。")
         return
@@ -70,19 +88,24 @@ def main():
     old_username = args.old
     new_username = args.new
 
+    # 查找所有 Git 仓库
     print("\n正在搜索 Git 仓库...")
     git_repos = find_git_repos(base_path)
     if not git_repos:
         print("未找到任何 Git 仓库。")
         return
 
+    # 并行处理 Git 仓库
     changes = []
-    for repo in git_repos:
-        remote_url = get_remote_url(repo)
-        if remote_url and old_username in remote_url:
-            new_url = remote_url.replace(old_username, new_username)
-            changes.append((repo, remote_url, new_url))
+    with ThreadPoolExecutor() as executor:
+        futures = [
+            executor.submit(process_repo, repo, old_username, new_username, changes)
+            for repo in git_repos
+        ]
+        for future in futures:
+            future.result()  # 等待所有任务完成
 
+    # 打印修改计划
     if not changes:
         print(f"\n未找到与用户名 '{old_username}' 相关的仓库链接。")
         return
@@ -94,14 +117,21 @@ def main():
         print(f"  新 URL: {new_url}")
         print("-" * 50)
 
+    # 确认修改
     confirm = input("\n是否确认修改？(输入 'yes' 继续): ").strip().lower()
     if confirm != "yes":
         print("操作已取消。")
         return
 
+    # 执行修改
     print("\n开始批量修改...")
-    for repo, old_url, new_url in changes:
-        update_remote_url(repo, old_url, new_url)
+    with ThreadPoolExecutor() as executor:
+        futures = [
+            executor.submit(update_remote_url, repo, old_url, new_url)
+            for repo, old_url, new_url in changes
+        ]
+        for future in futures:
+            future.result()  # 等待所有任务完成
 
     print("\n所有修改已完成！")
 

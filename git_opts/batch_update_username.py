@@ -1,3 +1,24 @@
+"""
+@file: batch_update_username.py
+@author: FireCatRush
+@date: 2025/02/12
+@version: v1.0
+@brief: 修改github用户名后，批量修改 Git 仓库远程 URL 的工具。
+@details:
+    - 功能：递归扫描指定文件夹下的所有 Git 仓库，将远程 URL 中的旧用户名替换为新用户名。
+    - 特性：
+        * 支持跨平台路径解析。
+        * 使用多线程提升性能。
+        * 提供动态进度条和运行时长显示。
+        * 在修改前提供确认提示，确保操作安全。
+@note:
+    - 使用前请确保已备份重要数据。
+    - 参数说明：
+        --path: 存储 Git 仓库的文件夹路径 (例如: /path/to/repositories 或 C:\\path\\to\\repositories)。
+        --old: 旧的 GitHub 用户名 (例如: olduser)。
+        --new: 新的 GitHub 用户名 (例如: newuser)。
+"""
+
 import os
 import subprocess
 import argparse

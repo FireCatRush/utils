@@ -1,18 +1,17 @@
 import os
 import subprocess
 import argparse
+from pathlib import Path
 
 def find_git_repos(base_path):
-    """递归查找指定路径下的所有 Git 仓库"""
     git_repos = []
     for root, dirs, files in os.walk(base_path):
         if ".git" in dirs:
             git_repos.append(root)
-            dirs[:] = []  # 停止递归进入子目录
+            dirs[:] = []
     return git_repos
 
 def get_remote_url(repo_path):
-    """获取 Git 仓库的远程 URL"""
     try:
         result = subprocess.run(
             ["git", "-C", repo_path, "remote", "get-url", "origin"],
@@ -29,7 +28,6 @@ def get_remote_url(repo_path):
         return None
 
 def update_remote_url(repo_path, old_url, new_url):
-    """更新 Git 仓库的远程 URL"""
     try:
         subprocess.run(
             ["git", "-C", repo_path, "remote", "set-url", "origin", new_url],
@@ -40,7 +38,6 @@ def update_remote_url(repo_path, old_url, new_url):
         print(f"Failed to update {repo_path}: {e}")
 
 def main():
-    # 解析命令行参数
     parser = argparse.ArgumentParser(
         description="批量修改 Git 仓库的远程 URL",
         epilog="示例: python update_git_urls.py --path /path/to/repositories --old olduser --new newuser"
@@ -48,7 +45,7 @@ def main():
     parser.add_argument(
         "--path",
         required=True,
-        help="存储 Git 仓库的文件夹路径 (例如: /path/to/repositories)"
+        help="存储 Git 仓库的文件夹路径 (例如: /path/to/repositories 或 C:\\path\\to\\repositories)"
     )
     parser.add_argument(
         "--old",
@@ -62,18 +59,23 @@ def main():
     )
     args = parser.parse_args()
 
-    base_path = args.path
+    base_path = Path(args.path).resolve()
+    if not base_path.exists():
+        print(f"错误：路径 '{args.path}' 不存在。")
+        return
+    if not base_path.is_dir():
+        print(f"错误：路径 '{args.path}' 不是有效的文件夹。")
+        return
+
     old_username = args.old
     new_username = args.new
 
-    # 查找所有 Git 仓库
     print("\n正在搜索 Git 仓库...")
     git_repos = find_git_repos(base_path)
     if not git_repos:
         print("未找到任何 Git 仓库。")
         return
 
-    # 收集需要修改的仓库信息
     changes = []
     for repo in git_repos:
         remote_url = get_remote_url(repo)
@@ -81,7 +83,6 @@ def main():
             new_url = remote_url.replace(old_username, new_username)
             changes.append((repo, remote_url, new_url))
 
-    # 打印修改计划
     if not changes:
         print(f"\n未找到与用户名 '{old_username}' 相关的仓库链接。")
         return
@@ -93,13 +94,11 @@ def main():
         print(f"  新 URL: {new_url}")
         print("-" * 50)
 
-    # 确认修改
     confirm = input("\n是否确认修改？(输入 'yes' 继续): ").strip().lower()
     if confirm != "yes":
         print("操作已取消。")
         return
 
-    # 执行修改
     print("\n开始批量修改...")
     for repo, old_url, new_url in changes:
         update_remote_url(repo, old_url, new_url)

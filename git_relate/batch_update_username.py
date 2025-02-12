@@ -3,19 +3,29 @@ import subprocess
 import argparse
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
+import time
 
 def is_git_repo(path):
     """检查路径是否为 Git 仓库"""
     return (path / ".git").is_dir()
 
-def find_git_repos(base_path):
-    """递归查找指定路径下的所有 Git 仓库"""
+def find_git_repos(base_path, total_dirs):
+    """递归查找指定路径下的所有 Git 仓库，并显示进度条"""
     git_repos = []
+    processed_dirs = 0
+
     for root, dirs, _ in os.walk(base_path):
         # 快速过滤包含 .git 的目录
         if ".git" in dirs:
             git_repos.append(Path(root))
             dirs[:] = []  # 停止递归进入子目录
+
+        processed_dirs += 1
+        # 显示进度条
+        progress = int((processed_dirs / total_dirs) * 50)  # 进度条宽度为 50 字符
+        print(f"\r扫描目录: [{'#' * progress}{'.' * (50 - progress)}] {processed_dirs}/{total_dirs}", end="")
+
+    print("\n")  # 换行
     return git_repos
 
 def get_remote_url(repo_path):
@@ -90,7 +100,15 @@ def main():
 
     # 查找所有 Git 仓库
     print("\n正在搜索 Git 仓库...")
-    git_repos = find_git_repos(base_path)
+    start_time = time.time()  # 记录开始时间
+
+    # 统计总目录数
+    total_dirs = sum(len(dirs) for _, dirs, _ in os.walk(base_path))
+    git_repos = find_git_repos(base_path, total_dirs)
+
+    elapsed_time = time.time() - start_time  # 计算运行时长
+    print(f"搜索完成！共找到 {len(git_repos)} 个 Git 仓库。耗时: {elapsed_time:.2f} 秒")
+
     if not git_repos:
         print("未找到任何 Git 仓库。")
         return
@@ -125,6 +143,7 @@ def main():
 
     # 执行修改
     print("\n开始批量修改...")
+    start_time = time.time()  # 记录开始时间
     with ThreadPoolExecutor() as executor:
         futures = [
             executor.submit(update_remote_url, repo, old_url, new_url)
@@ -133,7 +152,8 @@ def main():
         for future in futures:
             future.result()  # 等待所有任务完成
 
-    print("\n所有修改已完成！")
+    elapsed_time = time.time() - start_time  # 计算运行时长
+    print(f"\n所有修改已完成！耗时: {elapsed_time:.2f} 秒")
 
 if __name__ == "__main__":
     main()

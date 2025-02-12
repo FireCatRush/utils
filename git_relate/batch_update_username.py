@@ -9,11 +9,13 @@ def is_git_repo(path):
     """检查路径是否为 Git 仓库"""
     return (path / ".git").is_dir()
 
-def find_git_repos(base_path, total_dirs):
-    """递归查找指定路径下的所有 Git 仓库，并显示进度条"""
+def find_git_repos(base_path):
+    """递归查找指定路径下的所有 Git 仓库，并动态更新进度条"""
     git_repos = []
     processed_dirs = 0
 
+    # 动态更新进度条
+    print("扫描目录: [正在初始化...]", end="\r")
     for root, dirs, _ in os.walk(base_path):
         # 快速过滤包含 .git 的目录
         if ".git" in dirs:
@@ -21,9 +23,8 @@ def find_git_repos(base_path, total_dirs):
             dirs[:] = []  # 停止递归进入子目录
 
         processed_dirs += 1
-        # 显示进度条
-        progress = int((processed_dirs / total_dirs) * 50)  # 进度条宽度为 50 字符
-        print(f"\r扫描目录: [{'#' * progress}{'.' * (50 - progress)}] {processed_dirs}/{total_dirs}", end="")
+        # 动态更新进度条
+        print(f"\r扫描目录: 已处理 {processed_dirs} 个目录", end="")
 
     print("\n")  # 换行
     return git_repos
@@ -102,9 +103,7 @@ def main():
     print("\n正在搜索 Git 仓库...")
     start_time = time.time()  # 记录开始时间
 
-    # 统计总目录数
-    total_dirs = sum(len(dirs) for _, dirs, _ in os.walk(base_path))
-    git_repos = find_git_repos(base_path, total_dirs)
+    git_repos = find_git_repos(base_path)
 
     elapsed_time = time.time() - start_time  # 计算运行时长
     print(f"搜索完成！共找到 {len(git_repos)} 个 Git 仓库。耗时: {elapsed_time:.2f} 秒")
